@@ -1,4 +1,6 @@
 import pandas as pd 
+import numpy as np
+from sklearn.preprocessing import LabelEncoder 
 
 data = pd.read_csv("data/combine.csv" , nrows=50000)
 
@@ -9,6 +11,38 @@ print("\nFirst 50 rows\n", data.head(50))
 # Remove extra space from columns names 
 data.columns = data.columns.str.strip()
 print("\nColumns after cleaning", data.columns)
+
+
+# Check data problems
+
+# Missing values
+print("\n Missing value: \n")
+print(data.isnull().sum())  #This checks missing values (NaN)
+
+#Remove Infinite values
+
+#select only numeric value 
+numeric_data = data.select_dtypes(include=[np.number])
+
+print("\n Infinite values \n")
+print(np.isinf(numeric_data).sum())
+
+#-----------------
+# Label encoding
+#----------------- 
+
+# convert label to binary  using label encoding 
+le = LabelEncoder()
+
+data['Label'] = le.fit_transform(data['Label'])
+
+print("\nEncoded Label Distribution : \n")
+print(data['Label'].value_counts())
+
+#show mapping 
+print("\nLabel Mapping:")
+for i, label in enumerate(le.classes_):
+    print(f"{label} --> {i}")
 
 
 
