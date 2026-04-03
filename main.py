@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder 
 
-data = pd.read_csv("data/combine.csv" , nrows=50000)
+data = pd.read_csv("data/combine.csv" , nrows=200000)
 
 print("shape:", data.shape)
 print("\nColumns:\n", data.columns)
@@ -35,7 +35,6 @@ print(np.isinf(numeric_data).sum())
 le = LabelEncoder()
 
 data['Label'] = le.fit_transform(data['Label'])
-
 print("\nEncoded Label Distribution : \n")
 print(data['Label'].value_counts())
 
@@ -43,6 +42,9 @@ print(data['Label'].value_counts())
 print("\nLabel Mapping:")
 for i, label in enumerate(le.classes_):
     print(f"{label} --> {i}")
-
+    
+data = data.sample(frac=1, random_state=42).reset_index(drop=True)  #shuffle the data   
+print(data['Label'].head(10))
+print(data['Label'].tail(10))
 
 
