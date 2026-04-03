@@ -48,3 +48,12 @@ print(data['Label'].head(10))
 print(data['Label'].tail(10))
 
 
+# Split features & target 
+
+X = data.drop('Label', axis=1)
+y = data['Label']
+
+print("X shape:" , X.shape)
+print("Y shape:" , y.shape)
+
+
