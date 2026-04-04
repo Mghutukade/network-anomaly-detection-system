@@ -117,4 +117,7 @@ from sklearn.metrics import accuracy_score, classification_report
 print("Accuracy:", accuracy_score(y_test, y_pred))
 print(classification_report(y_test, y_pred))
 
-# print(data.corr()['Label'].sort_values(ascending=False))
+print(data.corr()['Label'].sort_values(ascending=False))
+
+# remove constant from the column 
+data = data.loc[:, data.nunique() > 1]
