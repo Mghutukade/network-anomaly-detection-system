@@ -51,9 +51,42 @@ print(data['Label'].tail(10))
 # Split features & target (test and train data )
 
 X = data.drop('Label', axis=1)
-y = data['Label']
+Y = data['Label']
 
 print("X shape:" , X.shape)
-print("Y shape:" , y.shape)
+print("Y shape:" , Y.shape)
 
+# Train-Test split 
+
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, Y,
+    test_size=0.2,
+    random_state=42
+)
+
+print("Train:", X_train.shape)
+print("Test:", X_test.shape)
+
+# FEATURE SCALING 
+
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+
+#fit on training data 
+# FEATURE SCAILING 
+
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+
+# fit on training data 
+X_train = scaler.fit_transform(X_train)
+
+# transfrom test data 
+X_test = scaler.transform(X_test)
+
+print("Scaling Done ✅")
 
