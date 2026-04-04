@@ -48,7 +48,7 @@ print(data['Label'].head(10))
 print(data['Label'].tail(10))
 
 
-# Split features & target 
+# Split features & target (test and train data )
 
 X = data.drop('Label', axis=1)
 y = data['Label']
