@@ -90,3 +90,22 @@ X_test = scaler.transform(X_test)
 
 print("Scaling Done ✅")
 
+print("NaN in X_train:" , pd.DataFrame(X_train).isnull().sum().sum())
+print("NaN in X_test:" , pd.DataFrame(X_test).isnull().sum().sum())
+
+X_train = np.nan_to_num(X_train)
+X_test = np.nan_to_num(X_test)
+
+print("NaN handled sucessfully")
+
+# -------------------------------
+# MODEL TRAINING
+# -------------------------------
+
+# from sklearn.linear_model import LogisticRegression
+
+# model = LogisticRegression(max_iter=1000)
+
+# model.fit(X_train, Y_train)
+
+# print("Model trained ✅")
