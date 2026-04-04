@@ -102,10 +102,19 @@ print("NaN handled sucessfully")
 # MODEL TRAINING
 # -------------------------------
 
-# from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression
 
-# model = LogisticRegression(max_iter=1000)
+model = LogisticRegression(max_iter=1000)
 
-# model.fit(X_train, Y_train)
+model.fit(X_train, y_train)
 
-# print("Model trained ✅")
+print("Model trained ✅")
+
+y_pred = model.predict(X_test)
+
+from sklearn.metrics import accuracy_score, classification_report
+
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print(classification_report(y_test, y_pred))
+
+# print(data.corr()['Label'].sort_values(ascending=False))
