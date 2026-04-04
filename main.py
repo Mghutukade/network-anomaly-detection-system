@@ -121,3 +121,20 @@ print(data.corr()['Label'].sort_values(ascending=False))
 
 # remove constant from the column 
 data = data.loc[:, data.nunique() > 1]
+
+
+#-----------------------------------------
+# RANDOM FOREST MODLE
+#-----------------------------------------
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+
+rf.fit(X_train, y_train)
+
+y_pred_rf = rf.predict(X_test)
+
+from sklearn.metrics import accuracy_score
+
+print("RF Accuracy:", accuracy_score(y_test, y_pred_rf))
