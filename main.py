@@ -48,12 +48,26 @@ print(data['Label'].head(10))
 print(data['Label'].tail(10))
 
 
-# Split features & target 
+# Split features & target (Trian and Test d)
 
 X = data.drop('Label', axis=1)
 y = data['Label']
 
 print("X shape:" , X.shape)
 print("Y shape:" , y.shape)
+
+# # FEATURE SCAILING 
+
+# from sklearn.preprocessing import StandardScaler
+
+# scaler = StandardScaler()
+
+# # fit on training data 
+# X_train = scaler.fit_transform(X_train)
+
+# # transfrom test data 
+# X_test = scaler.transform(X_test)
+
+# print("Scaling Done ✅")
 
 
