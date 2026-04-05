@@ -148,3 +148,10 @@ imp_df = pd.DataFrame({
 }).sort_values(by="Importance", ascending=False)
 
 print(imp_df.head(10))
+
+
+# visualize using matplot library 
+import matplotlib.pyplot as plt # for visualization 
+
+imp_df.head(10).plot(kind='barh', x='Feature', y='Importance')
+plt.show()
