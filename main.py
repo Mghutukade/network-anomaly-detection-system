@@ -183,3 +183,22 @@ from sklearn.metrics import classification_report, accuracy_score
 
 print("Isolation Forest Accuracy:", accuracy_score(y_test, y_pred_iso))
 print(classification_report(y_test, y_pred_iso))
+
+rf_pred = rf.predict(X_test) 
+
+
+# Hybrid model 
+final_pred = []
+
+for rf_p, iso_p in zip(rf_pred, y_pred_iso):
+    if rf_p == 1 or iso_p == 1:
+        final_pred.append(1)
+    else:
+        final_pred.append(0)
+        
+   
+# Evaluate fina model      
+from sklearn.metrics import accuracy_score, classification_report
+
+print("Hybrid Accuracy:", accuracy_score(y_test, final_pred))
+print(classification_report(y_test, final_pred))
