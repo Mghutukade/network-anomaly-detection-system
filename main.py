@@ -138,3 +138,13 @@ y_pred_rf = rf.predict(X_test)
 from sklearn.metrics import accuracy_score
 
 print("RF Accuracy:", accuracy_score(y_test, y_pred_rf))
+
+#  Feature importance --------------
+importance = rf.feature_importances_
+
+imp_df = pd.DataFrame({
+    "Feature": X.columns,
+    "Importance": importance
+}).sort_values(by="Importance", ascending=False)
+
+print(imp_df.head(10))
