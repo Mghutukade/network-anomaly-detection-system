@@ -203,12 +203,3 @@ from sklearn.metrics import accuracy_score, classification_report
 print("Hybrid Accuracy:", accuracy_score(y_test, final_pred))
 print(classification_report(y_test, final_pred))
 
-
-# Save model (producation step)
-import pickle
-
-#save model
-pickle.dump(rf, open("rf_model.pkl", "wb"))
-
-# save scaler 
-pickle.dump(scaler, open("scaler.pkl", "wb"))
