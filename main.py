@@ -28,7 +28,7 @@ def main():
     evaluate(y_test, y_pred)
 
     print("Step 7: Starting Sniffing 🚀")
-    start_sniffing()
+    start_sniffing(rf)
 
 
 if __name__ == "__main__":
