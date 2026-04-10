@@ -5,5 +5,5 @@ def process_packet(packet):
     
 def start_sniffing():
     print("Starting Packet Sniffing")
-    sniff(prn=process_packet, count=10)
+    sniff(prn=process_packet, count=50) 
     
