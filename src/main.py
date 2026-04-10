@@ -2,6 +2,7 @@ from src.preprocessing import preprocess_data
 from src.models import get_rf
 from src.train import train_model
 from src.evaluate import evaluate
+from src.sniffer import start_sniffing
 
 from sklearn.model_selection import train_test_split
 
@@ -22,5 +23,9 @@ rf = train_model(rf, X_train, y_train)
 # predict
 y_pred = rf.predict(X_test)
 
+# Sniffing 
+start_sniffing()
+
 # evaluate
 evaluate(y_test, y_pred)
+
