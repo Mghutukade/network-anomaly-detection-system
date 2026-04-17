@@ -98,6 +98,11 @@ def process_packet(packet, model):
 
     else:
         print(f"✅ LOW RISK ({risk_score}%) {src} → {dst} | packets={packets}")
+        
+        
+    # Ignore ICMP (protocol 1)
+    if proto == 1:
+        return
 
 
 # -------- START SNIFFING --------
