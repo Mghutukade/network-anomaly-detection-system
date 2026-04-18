@@ -1,44 +1,43 @@
 import joblib
-import os
+import numpy as np
 import pandas as pd
+import os
 
-# Path setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-model_path = os.path.join(BASE_DIR, "model.pkl")
 
-# Load model
-if not os.path.exists(model_path):
-    raise FileNotFoundError("❌ model.pkl not found! Run training first.")
+model = joblib.load(os.path.join(BASE_DIR, "model.pkl"))
+scaler = joblib.load(os.path.join(BASE_DIR, "scaler.pkl"))
 
-model = joblib.load(model_path)
+FEATURES = [
+    "packets",
+    "bytes",
+    "duration",
+    "proto",
+    "syn",
+    "ack",
+    "entropy"
+]
 
-# Feature names (IMPORTANT)
-FEATURE_NAMES = ["packet_length", "protocol", "src_port", "dst_port", "flags"]
+# -----------------------------
+# ML PREDICTION
+# -----------------------------
+def predict_traffic(features):
+    df = pd.DataFrame([features], columns=FEATURES)
+    df_scaled = scaler.transform(df)
 
-
-def predict_traffic(data):
-    # data format:
-    # [packet_length, protocol, src_port, dst_port, flags]
-
-    packet_length, protocol, src_port, dst_port, flags = data
-
-    # 🔥 ADD YOUR RULE HERE
-    if protocol == 17:
-        return 0
-
-    if packet_length > 1200:
-        return 1
-
-    # ML Prediction
-    df = pd.DataFrame([data], columns=FEATURE_NAMES)
-    prediction = model.predict(df)
-
-    return prediction[0]
-
-    # ML Prediction
-    prediction = model.predict(df)
-    return prediction[0]
+    prob = model.predict_proba(df_scaled)[0][1]
+    return prob
 
 
-def get_risk_label(pred):
-    return "🚨 Attack Detected" if pred == 1 else "✅ Normal"
+# -----------------------------
+# RISK LABEL FUNCTION (FIXED)
+# -----------------------------
+def get_risk_label(score):
+    score = int(score * 100)
+
+    if score > 80:
+        return f"🚨 HIGH RISK ({score}%)"
+    elif score > 50:
+        return f"⚠️ MEDIUM RISK ({score}%)"
+    else:
+        return f"✅ LOW RISK ({score}%)"
