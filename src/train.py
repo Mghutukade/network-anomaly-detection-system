@@ -1,29 +1,46 @@
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 import joblib
 import os
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 
-# Create dummy dataset with SAME features as live capture
+# -----------------------------
+# SAMPLE DATA (FLOW BASED IDS)
+# -----------------------------
 data = {
-    "packet_length": [60, 500, 1000, 70, 1500, 200, 800, 1200],
-    "protocol":      [6, 6, 17, 6, 17, 17, 6, 17],
-    "src_port":      [1234, 443, 80, 22, 8080, 53, 21, 25],
-    "dst_port":      [80, 1234, 53, 443, 21, 8080, 443, 110],
-    "flags":         [1, 1, 0, 1, 0, 0, 1, 0],
-    "label":         [0, 0, 0, 0, 1, 0, 0, 1]  # mix properly
+    "packets": [5, 50, 200, 10, 300, 20, 100, 400],
+    "bytes": [500, 5000, 20000, 1000, 30000, 2000, 10000, 40000],
+    "duration": [1, 2, 5, 1, 10, 2, 3, 8],
+    "proto": [6, 6, 17, 6, 17, 6, 6, 17],
+    "syn": [0, 10, 50, 1, 90, 2, 5, 120],
+    "ack": [1, 5, 10, 1, 2, 1, 3, 1],
+    "entropy": [1, 3, 6, 1, 7, 2, 3, 8],
+    "label": [0, 0, 1, 0, 1, 0, 0, 1]
 }
+
 df = pd.DataFrame(data)
 
 X = df.drop("label", axis=1)
 y = df["label"]
 
-model = RandomForestClassifier()
-model.fit(X, y)
+# -----------------------------
+# SCALE
+# -----------------------------
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-model_path = os.path.join(BASE_DIR, "model.pkl")
+# -----------------------------
+# MODEL
+# -----------------------------
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_scaled, y)
 
-joblib.dump(model, model_path)
+# -----------------------------
+# SAVE SAFE PATH
+# -----------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-print("✅ Model trained successfully!")
-print("✅ Model saved at:", model_path)
+joblib.dump(model, os.path.join(BASE_DIR, "model.pkl"))
+joblib.dump(scaler, os.path.join(BASE_DIR, "scaler.pkl"))
+
+print("✅ Training completed successfully")
