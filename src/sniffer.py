@@ -1,116 +1,156 @@
-from scapy.all import sniff, IP, TCP, UDP
+from scapy.all import sniff, IP, TCP, Raw
 import numpy as np
 import time
-from collections import defaultdict
+import math
 
-# -------- GLOBAL FLOW STORAGE --------
-flows = defaultdict(lambda: {
-    "count": 0,
-    "bytes": 0,
-    "start": time.time(),
-    "last_seen": time.time()
-})
+flows = {}
 
-# -------- PACKET PROCESSING --------
-def process_packet(packet, model):
+# -----------------------------
+# ENTROPY FUNCTION
+# -----------------------------
+def calculate_entropy(data):
+    if not data:
+        return 0
+    prob = [float(data.count(c)) / len(data) for c in set(data)]
+    return -sum([p * math.log2(p) for p in prob])
+
+# -----------------------------
+# PROCESS PACKET
+# -----------------------------
+def process_packet(packet, model, scaler):
     if not packet.haslayer(IP):
         return
 
     src = packet[IP].src
     dst = packet[IP].dst
     proto = packet[IP].proto
-    key = (src, dst)
-
     length = len(packet)
     now = time.time()
 
-    # -------- FLOW UPDATE --------
-    flow = flows[key]
-    flow["count"] += 1
-    flow["bytes"] += length
-    flow["last_seen"] = now
+    key = (src, dst)
 
-    duration = now - flow["start"]
-    packets = flow["count"]
-    bytes_ = flow["bytes"]
-
-    # -------- FEATURE ENGINEERING --------
-    features = np.zeros((1, 78))
-
-    # Basic features
-    features[0][0] = packets
-    features[0][1] = bytes_
-    features[0][2] = duration
-    features[0][3] = proto
-    features[0][4] = length
-
-    # Derived features
-    features[0][5] = bytes_ / max(1, packets)        # avg packet size
-    features[0][6] = packets / max(1, duration)      # packet rate
-    features[0][7] = bytes_ / max(1, duration)       # byte rate
-
-    # TCP features
-    if packet.haslayer(TCP):
-        flags = int(packet[TCP].flags)
-        features[0][8] = flags
-        features[0][9] = packet[TCP].sport
-        features[0][10] = packet[TCP].dport
-
-    # UDP features
-    if packet.haslayer(UDP):
-        features[0][11] = packet[UDP].sport
-        features[0][12] = packet[UDP].dport
-
-    # -------- ML PREDICTION --------
-    try:
-        proba = model.predict_proba(features)
-        attack_prob = proba[0][1]
-        risk_score = int(attack_prob * 100)
-    except:
-        risk_score = 0  # fallback if model fails
-
-    # -------- RULE-BASED DETECTION --------
-
-    # 🚨 DDoS / Flood detection
-    if packets > 100 and duration < 5:
-        risk_score = max(risk_score, 95)
-
-    elif packets > 50 and duration < 10:
-        risk_score = max(risk_score, 80)
-
-    elif packets > 20:
-        risk_score = max(risk_score, 60)
-
-    # 🚨 Ping Flood (ICMP)
-    if proto == 1 and packets > 20:
-        risk_score = max(risk_score, 85)
-
-    # 🚨 Port scanning (many small packets)
-    if packets > 30 and length < 100:
-        risk_score = max(risk_score, 75)
-
-    # -------- OUTPUT --------
-    if risk_score >= 90:
-        print(f"🚨 HIGH RISK ({risk_score}%) {src} → {dst} | packets={packets}")
-
-    elif risk_score >= 60:
-        print(f"⚠️ MEDIUM RISK ({risk_score}%) {src} → {dst} | packets={packets}")
-
-    else:
-        print(f"✅ LOW RISK ({risk_score}%) {src} → {dst} | packets={packets}")
-        
-        
-    # Ignore ICMP (protocol 1)
+    # Ignore ICMP
     if proto == 1:
         return
 
+    # -----------------------------
+    # FLOW INIT
+    # -----------------------------
+    if key not in flows:
+        flows[key] = {
+            "count": 0,
+            "bytes": 0,
+            "start": now,
+            "syn": 0,
+            "ack": 0
+        }
 
-# -------- START SNIFFING --------
-def start_sniffing(model):
+    flows[key]["count"] += 1
+    flows[key]["bytes"] += length
+
+    packets = flows[key]["count"]
+    bytes_ = flows[key]["bytes"]
+    duration = now - flows[key]["start"]
+
+    # Reset flow
+    if duration > 30:
+        flows[key] = {
+            "count": 1,
+            "bytes": length,
+            "start": now,
+            "syn": 0,
+            "ack": 0
+        }
+        return
+
+    # -----------------------------
+    # TCP FLAGS
+    # -----------------------------
+    syn_flag = 0
+    ack_flag = 0
+
+    if packet.haslayer(TCP):
+        flags = packet[TCP].flags
+        if flags & 0x02:
+            syn_flag = 1
+        if flags & 0x10:
+            ack_flag = 1
+
+    flows[key]["syn"] += syn_flag
+    flows[key]["ack"] += ack_flag
+
+    # -----------------------------
+    # ENTROPY
+    # -----------------------------
+    entropy = 0
+    if packet.haslayer(Raw):
+        payload = bytes(packet[Raw].load)
+        entropy = calculate_entropy(payload)
+
+    # -----------------------------
+    # FEATURES (MATCH TRAINING)
+    # -----------------------------
+    features = np.array([[ 
+        packets,
+        bytes_,
+        duration,
+        proto,
+        length,
+        bytes_ / max(1, packets),
+        packets / max(1, duration),
+        bytes_ / max(1, duration),
+        flows[key]["syn"],
+        flows[key]["ack"],
+        entropy
+    ]])
+
+    # ✅ SCALE FEATURES
+    features_scaled = scaler.transform(features)
+
+    # -----------------------------
+    # ML PREDICTION
+    # -----------------------------
+    proba = model.predict_proba(features_scaled)
+    attack_prob = proba[0][1]
+    risk_score = int(attack_prob * 100)
+
+    # -----------------------------
+    # RULE BOOSTING
+    # -----------------------------
+    packet_rate = packets / max(1, duration)
+
+    if packet_rate > 50:
+        risk_score = max(risk_score, 90)
+    elif packet_rate > 20:
+        risk_score = max(risk_score, 70)
+    elif packet_rate > 10:
+        risk_score = max(risk_score, 50)
+
+    if flows[key]["syn"] > flows[key]["ack"] * 2:
+        risk_score = max(risk_score, 85)
+
+    if entropy > 6:
+        risk_score = max(risk_score, 75)
+
+    # -----------------------------
+    # OUTPUT
+    # -----------------------------
+    if risk_score > 80:
+        print(f"🚨 HIGH RISK ({risk_score}%) {src} → {dst} | packets={packets}")
+    elif risk_score > 50:
+        print(f"⚠️ MEDIUM RISK ({risk_score}%) {src} → {dst} | packets={packets}")
+    else:
+        print(f"✅ LOW RISK ({risk_score}%) {src} → {dst} | packets={packets}")
+
+
+# -----------------------------
+# START SNIFFING
+# -----------------------------
+def start_sniffing(model, scaler):
     print("🚀 Starting Advanced IDS Sniffing...\n")
 
     sniff(
-        prn=lambda pkt: process_packet(pkt, model),
-        store=0,
-        count=200  # increase for continuous monitoring
+        prn=lambda pkt: process_packet(pkt, model, scaler),
+        store=False,
+        count=300   # auto stop
     )
