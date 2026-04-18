@@ -1,6 +1,4 @@
-from src.sniffer import process_packet
-from scapy.all import sniff
+from src.sniffer import start
 
-print("🚀 Network IDS Started...")
-
-sniff(prn=process_packet, store=0)
+if __name__ == "__main__":
+    start()
