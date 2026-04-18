@@ -1,24 +1,51 @@
 from scapy.all import sniff, IP, TCP, Raw
 import time
 import math
+import pandas as pd
 
-from src.predict import hybrid_score, get_label
+from src.predict import hybrid_score
 from src.soc_engine import evaluate_soc
 from src.logger import log_event
 
 flows = {}
 
-# ✅ Trusted IPs (Google, Cloudflare, Local)
+# -----------------------------
+# TRUSTED IP LIST
+# -----------------------------
 TRUSTED_IPS = [
-    "192.168.",     # local network
-    "142.250.",     # Google
-    "172.217.",     # Google
-    "104.18.",      # Cloudflare
-    "172.64."       # Cloudflare
+    "192.168.",
+
+    # Google
+    "142.250.", "172.217.", "192.178.", "142.251.",
+
+    # Cloudflare
+    "104.18.", "172.64.",
+
+    # Microsoft / Azure
+    "13.", "20.", "40.", "52.",
+
+    # AWS
+    "3.", "18.",
+
+    # Local network
+    "224.", "239."
 ]
 
 # -----------------------------
-# ENTROPY
+# FEATURE NAMES (IMPORTANT FIX)
+# -----------------------------
+FEATURE_COLUMNS = [
+    "packets",
+    "bytes",
+    "duration",
+    "proto",
+    "syn",
+    "ack",
+    "entropy"
+]
+
+# -----------------------------
+# ENTROPY FUNCTION
 # -----------------------------
 def entropy(data):
     if not data:
@@ -27,7 +54,7 @@ def entropy(data):
     return -sum(p * math.log2(p) for p in prob)
 
 # -----------------------------
-# PROCESS PACKET
+# MAIN PACKET PROCESSOR
 # -----------------------------
 def process_packet(packet):
 
@@ -42,16 +69,14 @@ def process_packet(packet):
 
     key = (src, dst)
 
-    # -----------------------------
-    # FLOW INIT
-    # -----------------------------
     if key not in flows:
         flows[key] = {
             "packets": 0,
             "bytes": 0,
             "start": now,
             "syn": 0,
-            "ack": 0
+            "ack": 0,
+            "last_score": 0
         }
 
     f = flows[key]
@@ -61,10 +86,8 @@ def process_packet(packet):
 
     duration = max(1, now - f["start"])
 
-    # -----------------------------
-    # TCP FLAGS
-    # -----------------------------
     syn = ack = 0
+
     if packet.haslayer(TCP):
         flags = packet[TCP].flags
         if flags & 0x02:
@@ -75,17 +98,14 @@ def process_packet(packet):
     f["syn"] += syn
     f["ack"] += ack
 
-    # -----------------------------
-    # ENTROPY
-    # -----------------------------
     ent = 0
     if packet.haslayer(Raw):
         ent = entropy(bytes(packet[Raw].load))
 
     # -----------------------------
-    # FEATURES
+    # CREATE DATAFRAME (FIX WARNING)
     # -----------------------------
-    features = [
+    features = pd.DataFrame([[
         f["packets"],
         f["bytes"],
         duration,
@@ -93,22 +113,22 @@ def process_packet(packet):
         f["syn"],
         f["ack"],
         ent
-    ]
+    ]], columns=FEATURE_COLUMNS)
 
     # -----------------------------
-    # 🤖 AI HYBRID SCORE
+    # AI SCORE
     # -----------------------------
     score = hybrid_score(features)
 
     # -----------------------------
-    # 🧠 RULE BOOSTING
+    # RULE BOOSTING (SOC LOGIC)
     # -----------------------------
     packet_rate = f["packets"] / duration
 
-    if packet_rate > 50:
+    if packet_rate > 100:
         score = max(score, 90)
-    elif packet_rate > 20:
-        score = max(score, 70)
+    elif packet_rate > 50:
+        score = max(score, 75)
 
     if f["syn"] > f["ack"] * 2:
         score = max(score, 85)
@@ -117,28 +137,39 @@ def process_packet(packet):
         score = max(score, 75)
 
     # -----------------------------
-    # 🛡️ TRUSTED IP LOGIC (FIXED)
+    # 🔥 TRUSTED IP STRONG CONTROL
     # -----------------------------
     if any(dst.startswith(ip) for ip in TRUSTED_IPS):
-        score = min(score, 40)   # 🔥 not too low (important fix)
+        score = score * 0.4
+        score = min(score, 30)
+
+    # -----------------------------
+    # SMOOTHING (ANTI-NOISE)
+    # -----------------------------
+    score = int((score + f["last_score"]) / 2)
+    f["last_score"] = score
 
     # -----------------------------
     # SOC ENGINE
     # -----------------------------
-    soc_event = evaluate_soc(src, dst, score)
+    soc = evaluate_soc(src, dst, score)
 
-    print(f"[{soc_event['severity']}] {score}% | {src} → {dst}")
+    print(f"[{soc['severity']}] {score}% | {src} → {dst}")
 
     log_event({
         "src": src,
         "dst": dst,
         "score": score,
-        "severity": soc_event["severity"],
-        "time": soc_event["time"]
+        "severity": soc["severity"],
+        "time": soc["time"]
     })
+    
+    # If both src & dst are trusted → force LOW
+    if any(src.startswith(ip) for ip in TRUSTED_IPS) and any(dst.startswith(ip) for ip in TRUSTED_IPS):
+        score = min(score, 25)
 
 # -----------------------------
-# START
+# START SNIFFER
 # -----------------------------
 def start():
     print("🚨 SOC AI Monitoring Started...")
