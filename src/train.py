@@ -1,21 +1,21 @@
 import pandas as pd
 import joblib
 import os
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
 # -----------------------------
-# SAMPLE DATA (FLOW BASED IDS)
+# DATA (Better balanced)
 # -----------------------------
 data = {
-    "packets": [5, 50, 200, 10, 300, 20, 100, 400],
-    "bytes": [500, 5000, 20000, 1000, 30000, 2000, 10000, 40000],
-    "duration": [1, 2, 5, 1, 10, 2, 3, 8],
-    "proto": [6, 6, 17, 6, 17, 6, 6, 17],
-    "syn": [0, 10, 50, 1, 90, 2, 5, 120],
-    "ack": [1, 5, 10, 1, 2, 1, 3, 1],
-    "entropy": [1, 3, 6, 1, 7, 2, 3, 8],
-    "label": [0, 0, 1, 0, 1, 0, 0, 1]
+    "packets": [5, 10, 50, 200, 300, 20, 100, 400],
+    "bytes": [500, 800, 5000, 20000, 30000, 2000, 10000, 40000],
+    "duration": [1, 2, 2, 5, 10, 2, 3, 8],
+    "proto": [6, 6, 6, 17, 17, 6, 6, 17],
+    "syn": [1, 2, 10, 50, 90, 2, 5, 120],
+    "ack": [1, 2, 5, 10, 2, 1, 3, 1],
+    "entropy": [1.2, 1.5, 3, 6, 7, 2, 3, 8],
+    "label": [0, 0, 0, 1, 1, 0, 0, 1]
 }
 
 df = pd.DataFrame(data)
@@ -24,23 +24,27 @@ X = df.drop("label", axis=1)
 y = df["label"]
 
 # -----------------------------
-# SCALE
+# SCALER
 # -----------------------------
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # -----------------------------
-# MODEL
+# MODELS
 # -----------------------------
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_scaled, y)
+model_if = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+model_if.fit(X_scaled)
+
+model_rf = RandomForestClassifier(n_estimators=100, random_state=42)
+model_rf.fit(X_scaled, y)
 
 # -----------------------------
-# SAVE SAFE PATH
+# SAVE
 # -----------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-joblib.dump(model, os.path.join(BASE_DIR, "model.pkl"))
-joblib.dump(scaler, os.path.join(BASE_DIR, "scaler.pkl"))
+joblib.dump(model_if, os.path.join(BASE, "model_if.pkl"))
+joblib.dump(model_rf, os.path.join(BASE, "model_rf.pkl"))
+joblib.dump(scaler, os.path.join(BASE, "scaler.pkl"))
 
-print("✅ Training completed successfully")
+print("✅ Hybrid models trained successfully")
