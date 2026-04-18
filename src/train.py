@@ -5,14 +5,13 @@ import os
 
 # Create dummy dataset with SAME features as live capture
 data = {
-    "packet_length": [60, 500, 1000, 70, 1500],
-    "protocol": [6, 6, 17, 6, 17],
-    "src_port": [1234, 443, 80, 22, 8080],
-    "dst_port": [80, 1234, 53, 443, 21],
-    "flags": [1, 1, 0, 1, 0],
-    "label": [0, 0, 1, 0, 1]  # 0=Normal, 1=Attack
+    "packet_length": [60, 500, 1000, 70, 1500, 200, 800, 1200],
+    "protocol":      [6, 6, 17, 6, 17, 17, 6, 17],
+    "src_port":      [1234, 443, 80, 22, 8080, 53, 21, 25],
+    "dst_port":      [80, 1234, 53, 443, 21, 8080, 443, 110],
+    "flags":         [1, 1, 0, 1, 0, 0, 1, 0],
+    "label":         [0, 0, 0, 0, 1, 0, 0, 1]  # mix properly
 }
-
 df = pd.DataFrame(data)
 
 X = df.drop("label", axis=1)
