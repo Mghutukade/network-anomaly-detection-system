@@ -2,17 +2,33 @@ from scapy.all import sniff, IP, TCP, Raw
 import time
 import math
 
-from src.predict import predict_traffic, get_risk_label
+from src.predict import hybrid_score, get_label
+from src.soc_engine import evaluate_soc
+from src.logger import log_event
 
 flows = {}
 
-def calculate_entropy(data):
+# ✅ Trusted IPs (Google, Cloudflare, Local)
+TRUSTED_IPS = [
+    "192.168.",     # local network
+    "142.250.",     # Google
+    "172.217.",     # Google
+    "104.18.",      # Cloudflare
+    "172.64."       # Cloudflare
+]
+
+# -----------------------------
+# ENTROPY
+# -----------------------------
+def entropy(data):
     if not data:
         return 0
     prob = [data.count(x)/len(data) for x in set(data)]
     return -sum(p * math.log2(p) for p in prob)
 
-
+# -----------------------------
+# PROCESS PACKET
+# -----------------------------
 def process_packet(packet):
 
     if not packet.haslayer(IP):
@@ -27,7 +43,7 @@ def process_packet(packet):
     key = (src, dst)
 
     # -----------------------------
-    # INIT FLOW
+    # FLOW INIT
     # -----------------------------
     if key not in flows:
         flows[key] = {
@@ -38,18 +54,17 @@ def process_packet(packet):
             "ack": 0
         }
 
-    flow = flows[key]
-    flow["packets"] += 1
-    flow["bytes"] += length
+    f = flows[key]
 
-    duration = max(1, now - flow["start"])
+    f["packets"] += 1
+    f["bytes"] += length
+
+    duration = max(1, now - f["start"])
 
     # -----------------------------
     # TCP FLAGS
     # -----------------------------
-    syn = 0
-    ack = 0
-
+    syn = ack = 0
     if packet.haslayer(TCP):
         flags = packet[TCP].flags
         if flags & 0x02:
@@ -57,55 +72,74 @@ def process_packet(packet):
         if flags & 0x10:
             ack = 1
 
-    flow["syn"] += syn
-    flow["ack"] += ack
+    f["syn"] += syn
+    f["ack"] += ack
 
     # -----------------------------
     # ENTROPY
     # -----------------------------
-    entropy = 0
+    ent = 0
     if packet.haslayer(Raw):
-        entropy = calculate_entropy(bytes(packet[Raw].load))
+        ent = entropy(bytes(packet[Raw].load))
 
     # -----------------------------
-    # FEATURES FOR ML
+    # FEATURES
     # -----------------------------
     features = [
-        flow["packets"],
-        flow["bytes"],
+        f["packets"],
+        f["bytes"],
         duration,
         proto,
-        flow["syn"],
-        flow["ack"],
-        entropy
+        f["syn"],
+        f["ack"],
+        ent
     ]
 
     # -----------------------------
-    # ML PREDICTION
+    # 🤖 AI HYBRID SCORE
     # -----------------------------
-    ml_prob = predict_traffic(features)
+    score = hybrid_score(features)
 
     # -----------------------------
-    # RULE ENGINE
+    # 🧠 RULE BOOSTING
     # -----------------------------
-    packet_rate = flow["packets"] / duration
-
-    rule_score = 0
+    packet_rate = f["packets"] / duration
 
     if packet_rate > 50:
-        rule_score = 0.9
+        score = max(score, 90)
     elif packet_rate > 20:
-        rule_score = 0.7
-    elif flow["syn"] > flow["ack"] * 3:
-        rule_score = 0.85
-    elif entropy > 6:
-        rule_score = 0.8
+        score = max(score, 70)
+
+    if f["syn"] > f["ack"] * 2:
+        score = max(score, 85)
+
+    if ent > 6:
+        score = max(score, 75)
 
     # -----------------------------
-    # FINAL SCORE
+    # 🛡️ TRUSTED IP LOGIC (FIXED)
     # -----------------------------
-    final_score = (ml_prob * 0.4) + (rule_score * 0.6)
+    if any(dst.startswith(ip) for ip in TRUSTED_IPS):
+        score = min(score, 40)   # 🔥 not too low (important fix)
 
-    label = get_risk_label(final_score)
+    # -----------------------------
+    # SOC ENGINE
+    # -----------------------------
+    soc_event = evaluate_soc(src, dst, score)
 
-    print(f"{label} | {src} → {dst}")
+    print(f"[{soc_event['severity']}] {score}% | {src} → {dst}")
+
+    log_event({
+        "src": src,
+        "dst": dst,
+        "score": score,
+        "severity": soc_event["severity"],
+        "time": soc_event["time"]
+    })
+
+# -----------------------------
+# START
+# -----------------------------
+def start():
+    print("🚨 SOC AI Monitoring Started...")
+    sniff(prn=process_packet, store=0)
