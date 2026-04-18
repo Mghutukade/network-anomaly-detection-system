@@ -1,30 +1,52 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
-def preprocess_data(file_path):
+def preprocess_data(path):
+    df = pd.read_csv(path, low_memory=False)
 
-    data = pd.read_csv(file_path, nrows=200000)
+    # Clean column names
+    df.columns = df.columns.str.strip()
 
-    # clean column names
-    data.columns = data.columns.str.strip()
+    # Feature creation
+    df["packets"] = df["Total Fwd Packets"] + df["Total Backward Packets"]
+    df["bytes"] = df["Total Length of Fwd Packets"] + df["Total Length of Bwd Packets"]
+    df["duration"] = df["Flow Duration"]
+    df["protocol"] = 6
+    df["length"] = df["Packet Length Mean"]
+    df["syn"] = df["SYN Flag Count"]
+    df["ack"] = df["ACK Flag Count"]
+    df["entropy"] = 0
 
-    # label encoding
-    le = LabelEncoder()
-    data['Label'] = le.fit_transform(data['Label'])
+    # ✅ FIX LABEL
+    df["label"] = df["Label"].apply(lambda x: 0 if x == "BENIGN" else 1)
 
-    # shuffle
-    data = data.sample(frac=1, random_state=42).reset_index(drop=True)
+    # Clean data
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    # split features & target
-    X = data.drop('Label', axis=1)
-    y = data['Label']
+    # Convert ALL to numeric
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # scaling
+    df.fillna(0, inplace=True)
+
+    # Derived features
+    df["avg_packet_size"] = df["bytes"] / df["packets"].replace(0, 1)
+    df["packet_rate"] = df["packets"] / df["duration"].replace(0, 1)
+    df["byte_rate"] = df["bytes"] / df["duration"].replace(0, 1)
+
+    # Final features
+    features = [
+        "packets", "bytes", "duration", "protocol", "length",
+        "avg_packet_size", "packet_rate", "byte_rate",
+        "syn", "ack", "entropy"
+    ]
+
+    X = df[features]
+    y = df["label"]
+
+    # Scaling
     scaler = StandardScaler()
-    X = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(X)
 
-    # handle NaN
-    X = np.nan_to_num(X)
-
-    return X, y, scaler
+    return X_scaled, y, scaler
