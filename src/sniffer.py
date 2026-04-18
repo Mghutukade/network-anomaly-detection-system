@@ -1,23 +1,20 @@
 from scapy.all import sniff, IP, TCP, Raw
-import numpy as np
 import time
 import math
 
+from src.predict import predict_traffic, get_risk_label
+
 flows = {}
 
-# -----------------------------
-# ENTROPY FUNCTION
-# -----------------------------
 def calculate_entropy(data):
     if not data:
         return 0
-    prob = [float(data.count(c)) / len(data) for c in set(data)]
-    return -sum([p * math.log2(p) for p in prob])
+    prob = [data.count(x)/len(data) for x in set(data)]
+    return -sum(p * math.log2(p) for p in prob)
 
-# -----------------------------
-# PROCESS PACKET
-# -----------------------------
-def process_packet(packet, model, scaler):
+
+def process_packet(packet):
+
     if not packet.haslayer(IP):
         return
 
@@ -29,128 +26,86 @@ def process_packet(packet, model, scaler):
 
     key = (src, dst)
 
-    # Ignore ICMP
-    if proto == 1:
-        return
-
     # -----------------------------
-    # FLOW INIT
+    # INIT FLOW
     # -----------------------------
     if key not in flows:
         flows[key] = {
-            "count": 0,
+            "packets": 0,
             "bytes": 0,
             "start": now,
             "syn": 0,
             "ack": 0
         }
 
-    flows[key]["count"] += 1
-    flows[key]["bytes"] += length
+    flow = flows[key]
+    flow["packets"] += 1
+    flow["bytes"] += length
 
-    packets = flows[key]["count"]
-    bytes_ = flows[key]["bytes"]
-    duration = now - flows[key]["start"]
-
-    # Reset flow
-    if duration > 30:
-        flows[key] = {
-            "count": 1,
-            "bytes": length,
-            "start": now,
-            "syn": 0,
-            "ack": 0
-        }
-        return
+    duration = max(1, now - flow["start"])
 
     # -----------------------------
     # TCP FLAGS
     # -----------------------------
-    syn_flag = 0
-    ack_flag = 0
+    syn = 0
+    ack = 0
 
     if packet.haslayer(TCP):
         flags = packet[TCP].flags
         if flags & 0x02:
-            syn_flag = 1
+            syn = 1
         if flags & 0x10:
-            ack_flag = 1
+            ack = 1
 
-    flows[key]["syn"] += syn_flag
-    flows[key]["ack"] += ack_flag
+    flow["syn"] += syn
+    flow["ack"] += ack
 
     # -----------------------------
     # ENTROPY
     # -----------------------------
     entropy = 0
     if packet.haslayer(Raw):
-        payload = bytes(packet[Raw].load)
-        entropy = calculate_entropy(payload)
+        entropy = calculate_entropy(bytes(packet[Raw].load))
 
     # -----------------------------
-    # FEATURES (MATCH TRAINING)
+    # FEATURES FOR ML
     # -----------------------------
-    features = np.array([[ 
-        packets,
-        bytes_,
+    features = [
+        flow["packets"],
+        flow["bytes"],
         duration,
         proto,
-        length,
-        bytes_ / max(1, packets),
-        packets / max(1, duration),
-        bytes_ / max(1, duration),
-        flows[key]["syn"],
-        flows[key]["ack"],
+        flow["syn"],
+        flow["ack"],
         entropy
-    ]])
-
-    # ✅ SCALE FEATURES
-    features_scaled = scaler.transform(features)
+    ]
 
     # -----------------------------
     # ML PREDICTION
     # -----------------------------
-    proba = model.predict_proba(features_scaled)
-    attack_prob = proba[0][1]
-    risk_score = int(attack_prob * 100)
+    ml_prob = predict_traffic(features)
 
     # -----------------------------
-    # RULE BOOSTING
+    # RULE ENGINE
     # -----------------------------
-    packet_rate = packets / max(1, duration)
+    packet_rate = flow["packets"] / duration
+
+    rule_score = 0
 
     if packet_rate > 50:
-        risk_score = max(risk_score, 90)
+        rule_score = 0.9
     elif packet_rate > 20:
-        risk_score = max(risk_score, 70)
-    elif packet_rate > 10:
-        risk_score = max(risk_score, 50)
-
-    if flows[key]["syn"] > flows[key]["ack"] * 2:
-        risk_score = max(risk_score, 85)
-
-    if entropy > 6:
-        risk_score = max(risk_score, 75)
+        rule_score = 0.7
+    elif flow["syn"] > flow["ack"] * 3:
+        rule_score = 0.85
+    elif entropy > 6:
+        rule_score = 0.8
 
     # -----------------------------
-    # OUTPUT
+    # FINAL SCORE
     # -----------------------------
-    if risk_score > 80:
-        print(f"🚨 HIGH RISK ({risk_score}%) {src} → {dst} | packets={packets}")
-    elif risk_score > 50:
-        print(f"⚠️ MEDIUM RISK ({risk_score}%) {src} → {dst} | packets={packets}")
-    else:
-        print(f"✅ LOW RISK ({risk_score}%) {src} → {dst} | packets={packets}")
+    final_score = (ml_prob * 0.4) + (rule_score * 0.6)
 
+    label = get_risk_label(final_score)
 
-# -----------------------------
-# START SNIFFING
-# -----------------------------
-def start_sniffing(model, scaler):
-    print("🚀 Starting Advanced IDS Sniffing...\n")
-
-    sniff(
-        prn=lambda pkt: process_packet(pkt, model, scaler),
-        store=False,
-        count=300   # auto stop
-    )
+    print(f"{label} | {src} → {dst}")
