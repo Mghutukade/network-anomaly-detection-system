@@ -1,43 +1,53 @@
 import joblib
-import numpy as np
 import pandas as pd
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-model = joblib.load(os.path.join(BASE_DIR, "model.pkl"))
-scaler = joblib.load(os.path.join(BASE_DIR, "scaler.pkl"))
+model_if = joblib.load(os.path.join(BASE, "model_if.pkl"))
+model_rf = joblib.load(os.path.join(BASE, "model_rf.pkl"))
+scaler = joblib.load(os.path.join(BASE, "scaler.pkl"))
 
-FEATURES = [
-    "packets",
-    "bytes",
-    "duration",
-    "proto",
-    "syn",
-    "ack",
-    "entropy"
-]
+FEATURES = ["packets","bytes","duration","proto","syn","ack","entropy"]
 
-# -----------------------------
-# ML PREDICTION
-# -----------------------------
-def predict_traffic(features):
+def hybrid_score(features):
+
     df = pd.DataFrame([features], columns=FEATURES)
-    df_scaled = scaler.transform(df)
+    scaled = scaler.transform(df)
 
-    prob = model.predict_proba(df_scaled)[0][1]
-    return prob
+    # -----------------------------
+    # Isolation Forest
+    # -----------------------------
+    if_score = model_if.decision_function(scaled)[0]
+    if_score = int((1 - if_score) * 50)
+    if_score = max(0, min(100, if_score))
+
+    # -----------------------------
+    # Random Forest
+    # -----------------------------
+    rf_score = model_rf.predict_proba(scaled)[0][1]
+    rf_score = int(rf_score * 100)
+
+    # -----------------------------
+    # HYBRID FUSION
+    # -----------------------------
+    final_score = int(
+        (0.6 * if_score) +   # anomaly weight
+        (0.4 * rf_score)
+    )
+
+    # DEBUG (optional)
+    # print(f"IF={if_score}, RF={rf_score}, FINAL={final_score}")
+
+    return final_score
 
 
-# -----------------------------
-# RISK LABEL FUNCTION (FIXED)
-# -----------------------------
-def get_risk_label(score):
-    score = int(score * 100)
-
+def get_label(score):
     if score > 80:
-        return f"🚨 HIGH RISK ({score}%)"
-    elif score > 50:
-        return f"⚠️ MEDIUM RISK ({score}%)"
+        return "CRITICAL"
+    elif score > 60:
+        return "HIGH"
+    elif score > 40:
+        return "MEDIUM"
     else:
-        return f"✅ LOW RISK ({score}%)"
+        return "LOW"
