@@ -1,53 +1,31 @@
+import numpy as np
 import joblib
-import pandas as pd
 import os
 
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(__file__)
 
-model_if = joblib.load(os.path.join(BASE, "model_if.pkl"))
-model_rf = joblib.load(os.path.join(BASE, "model_rf.pkl"))
-scaler = joblib.load(os.path.join(BASE, "scaler.pkl"))
-
-FEATURES = ["packets","bytes","duration","proto","syn","ack","entropy"]
+rf_model = joblib.load(os.path.join(BASE_DIR, "rf_model.pkl"))
+iso_model = joblib.load(os.path.join(BASE_DIR, "iso_model.pkl"))
+scaler = joblib.load(os.path.join(BASE_DIR, "scaler.pkl"))
 
 def hybrid_score(features):
+    """
+    features = pandas DataFrame with 1 row
+    """
 
-    df = pd.DataFrame([features], columns=FEATURES)
-    scaled = scaler.transform(df)
+    # ✅ DO NOT WRAP AGAIN
+    scaled = scaler.transform(features)
 
-    # -----------------------------
-    # Isolation Forest
-    # -----------------------------
-    if_score = model_if.decision_function(scaled)[0]
-    if_score = int((1 - if_score) * 50)
-    if_score = max(0, min(100, if_score))
+    # RF probability
+    rf_prob = rf_model.predict_proba(scaled)[0][1]
 
-    # -----------------------------
-    # Random Forest
-    # -----------------------------
-    rf_score = model_rf.predict_proba(scaled)[0][1]
-    rf_score = int(rf_score * 100)
+    # Isolation Forest score
+    iso_score = iso_model.decision_function(scaled)[0]
 
-    # -----------------------------
-    # HYBRID FUSION
-    # -----------------------------
-    final_score = int(
-        (0.6 * if_score) +   # anomaly weight
-        (0.4 * rf_score)
-    )
+    # Normalize iso (-0.5 to 0.5 approx → 0 to 1)
+    iso_norm = (iso_score + 0.5)
 
-    # DEBUG (optional)
-    # print(f"IF={if_score}, RF={rf_score}, FINAL={final_score}")
+    # Combine
+    final_score = (0.7 * rf_prob + 0.3 * iso_norm) * 100
 
-    return final_score
-
-
-def get_label(score):
-    if score > 80:
-        return "CRITICAL"
-    elif score > 60:
-        return "HIGH"
-    elif score > 40:
-        return "MEDIUM"
-    else:
-        return "LOW"
+    return int(final_score)
