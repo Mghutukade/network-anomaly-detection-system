@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import './App.css';
 
 const socket = io("http://127.0.0.1:5000");
@@ -8,49 +8,64 @@ const socket = io("http://127.0.0.1:5000");
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState(''); // New State
+  const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [stream, setStream] = useState([]);
   const [graphData, setGraphData] = useState([]);
   const [risk, setRisk] = useState(0);
   const [time, setTime] = useState(new Date().toLocaleTimeString());
+  const [stats, setStats] = useState({ total: 0, critical: 0, avgRisk: 0 });
 
   useEffect(() => {
     const clock = setInterval(() => setTime(new Date().toLocaleTimeString()), 1000);
+    
     socket.on("intel_stream", (data) => {
       if (isLoggedIn) {
-        setStream(prev => [data, ...prev].slice(0, 12));
+        setStream(prev => [data, ...prev].slice(0, 15));
         setRisk(data.threat);
-        setGraphData(prev => [...prev.slice(-30), {t: data.timestamp, v: data.threat}]);
+        // Use 'v' for threat and 'e' for entropy tracking
+        setGraphData(prev => [...prev.slice(-25), { t: data.timestamp, v: data.threat, e: data.entropy }]);
+        
+        setStats(prev => ({
+          total: prev.total + 1,
+          critical: data.threat > 80 ? prev.critical + 1 : prev.critical,
+          avgRisk: Math.floor(((prev.avgRisk * prev.total) + data.threat) / (prev.total + 1))
+        }));
       }
     });
-    return () => clearInterval(clock);
+
+    return () => {
+      clearInterval(clock);
+      socket.off("intel_stream");
+    };
   }, [isLoggedIn]);
 
   const handleLogin = async () => {
     const res = await fetch('http://localhost:5000/login', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp })
     });
     const result = await res.json();
     if (result.status === 'success') setIsLoggedIn(true);
-    else alert("AUTH_FAILED");
+    else alert("ACCESS_DENIED: UNAUTHORIZED");
   };
 
   if (!isLoggedIn) {
     return (
       <div className="auth-screen">
         <div className="auth-box">
-          <h2>NETWORK_ANOMALY_DETECTION</h2>
-          <input placeholder="ADMIN_EMAIL" onChange={e => setEmail(e.target.value)} />
-          <input type="password" placeholder="ADMIN_PASSWORD" onChange={e => setPassword(e.target.value)} />
-          <button onClick={() => fetch('http://localhost:5000/generate-otp', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'}, 
-            body:JSON.stringify({email, password}) // Send password for OTP
-          })}>REQUEST_OTP</button>
-          <input placeholder="ENTER_OTP" onChange={e => setOtp(e.target.value)} />
-          <button className="login-btn" onClick={handleLogin}>AUTHORIZE_LOGIN</button>
+          <div className="auth-header">
+            <h2>NADS_SECURE_KERNEL</h2>
+            <p>AUTHORIZED_ACCESS_ONLY</p>
+          </div>
+          <input placeholder="ADMIN_ID" onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="SECRET_KEY" onChange={e => setPassword(e.target.value)} />
+          <button className="otp-btn" onClick={() => fetch('http://localhost:5000/generate-otp', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          })}>GET_AUTH_TOKEN</button>
+          <input placeholder="UNIQUE_OTP" onChange={e => setOtp(e.target.value)} />
+          <button className="login-btn" onClick={handleLogin}>VERIFY_&_ENTER</button>
         </div>
       </div>
     );
@@ -59,30 +74,93 @@ function App() {
   return (
     <div className="dashboard-container">
       <header className="header">
-        <h1>NETWORK ANOMALY DETECTION SYSTEM</h1>
-        <div className="top-right"><span>{time}</span></div>
+        <div className="brand">
+          <div className="pulse-icon"></div>
+          <h1>NADS // ENTERPRISE_FORENSICS_v2.5</h1>
+        </div>
+        <div className="stats-bar">
+          <div className="stat-item">
+            <span className="label">TOTAL_SCANS</span>
+            <span className="value">{stats.total}</span>
+          </div>
+          <div className="stat-item danger-text">
+            <span className="label">CRITICAL_THREATS</span>
+            <span className="value">{stats.critical}</span>
+          </div>
+          <div className="stat-item">
+            <span className="label">AVG_RISK</span>
+            <span className="value">{stats.avgRisk}%</span>
+          </div>
+          <div className="timer-box">{time}</div>
+        </div>
       </header>
+
       <div className="main-layout">
-        <div className="risk-sidebar">
-          <div className="gauge-label">24/7_RISK_SCORE</div>
-          <div className={`gauge ${risk > 80 ? 'danger' : ''}`}>{risk}%</div>
-          <ResponsiveContainer width="100%" height={100}>
-            <LineChart data={graphData}><Line type="monotone" dataKey="v" stroke="#00f3ff" dot={false} isAnimationActive={false}/></LineChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="flow-table">
-          <table>
-            <thead><tr><th>SOURCE</th><th>VECTOR</th><th>DESTINATION</th><th>RISK</th></tr></thead>
-            <tbody>
-              {stream.map((p, i) => (
-                <tr key={i}>
-                  <td>{p.src}</td><td>▶▶▶</td><td>{p.dest}</td>
-                  <td style={{color: p.threat > 80 ? 'red' : '#00ff9d'}}>{p.threat}%</td>
+        <aside className="risk-sidebar">
+          <div className="module-card">
+            <div className="module-label">LIVE_THREAT_INDEX</div>
+            <div className={`big-gauge ${risk > 80 ? 'critical' : ''}`}>
+              {risk}<span>%</span>
+            </div>
+            <p className="risk-desc">{risk > 80 ? "!!! ALERT: ANOMALY !!!" : "SYSTEM: STABLE"}</p>
+          </div>
+
+          <div className="module-card tracker">
+            <div className="module-label">ENTROPY_PATTERN_TRACKER</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={graphData}>
+                <CartesianGrid strokeDasharray="1 4" stroke="#00414a" vertical={false}/>
+                <Tooltip 
+                  contentStyle={{backgroundColor: '#000', border: '1px solid #00f3ff', fontSize: '10px'}}
+                  itemStyle={{color: '#00f3ff'}}
+                />
+                <Line 
+                  type="stepAfter" 
+                  dataKey="v" 
+                  stroke={risk > 80 ? "#ff003c" : "#00f3ff"} 
+                  strokeWidth={2} 
+                  dot={{ r: 2, fill: '#00f3ff' }} 
+                  isAnimationActive={false} 
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </aside>
+
+        <section className="forensics-container">
+          <div className="table-header">
+            <div className="module-label">REAL-TIME_ANOMALY_FORENSICS</div>
+            <div className="db-status">POSTGRES_SYNC: ACTIVE</div>
+          </div>
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>ORIGIN</th>
+                  <th>VECTOR</th>
+                  <th>NODE_TARGET</th>
+                  <th>THREAT</th>
+                  <th>ACTION</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {stream.map((p, i) => (
+                  <tr key={i} className={p.threat > 80 ? 'high-threat-row' : ''}>
+                    <td className="ip-cell mono">{p.src}</td>
+                    <td><span className="vector-tag">{p.vector}</span></td>
+                    <td className="mono" style={{opacity: 0.6}}>{p.dest}</td>
+                    <td className={p.threat > 80 ? 'risk-high' : 'risk-low'}>{p.threat}%</td>
+                    <td>
+                      <span className={`status-badge ${p.threat > 80 ? 'blocked' : 'monitored'}`}>
+                        {p.threat > 80 ? "ARCHIVED" : "MONITOR"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   );
