@@ -1,107 +1,89 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-import { AreaChart, Area, ResponsiveContainer, YAxis, CartesianGrid } from 'recharts';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import './App.css';
 
 const socket = io("http://127.0.0.1:5000");
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState(''); // New State
+  const [otp, setOtp] = useState('');
   const [stream, setStream] = useState([]);
   const [graphData, setGraphData] = useState([]);
-  const [packetCount, setPacketCount] = useState(0); // For that "Aura" math
-  const [bitrate, setBitrate] = useState(0);
+  const [risk, setRisk] = useState(0);
+  const [time, setTime] = useState(new Date().toLocaleTimeString());
 
   useEffect(() => {
-    socket.on("intel_stream", (payload) => {
-      // 1. Increase display limit to 15 for better "scroll" feel
-      setStream(prev => [payload, ...prev].slice(0, 15));
-      
-      // 2. Aura Math: Calculate cumulative "Network Pressure"
-      setPacketCount(prev => prev + 1);
-      
-      // 3. Graph Logic: Using Hex Size and Entropy for the Waveform
-      const hexToInt = parseInt(payload.hex_size, 16);
-      const intensity = (hexToInt * payload.entropy) / 100;
-      
-      setGraphData(prev => [...prev.slice(-30), { 
-        time: payload.timestamp, 
-        val: intensity,
-        threat: payload.threat 
-      }]);
+    const clock = setInterval(() => setTime(new Date().toLocaleTimeString()), 1000);
+    socket.on("intel_stream", (data) => {
+      if (isLoggedIn) {
+        setStream(prev => [data, ...prev].slice(0, 12));
+        setRisk(data.threat);
+        setGraphData(prev => [...prev.slice(-30), {t: data.timestamp, v: data.threat}]);
+      }
     });
+    return () => clearInterval(clock);
+  }, [isLoggedIn]);
 
-    return () => socket.off("intel_stream");
-  }, []);
+  const handleLogin = async () => {
+    const res = await fetch('http://localhost:5000/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email, otp })
+    });
+    const result = await res.json();
+    if (result.status === 'success') setIsLoggedIn(true);
+    else alert("AUTH_FAILED");
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-box">
+          <h2>NETWORK_ANOMALY_DETECTION</h2>
+          <input placeholder="ADMIN_EMAIL" onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="ADMIN_PASSWORD" onChange={e => setPassword(e.target.value)} />
+          <button onClick={() => fetch('http://localhost:5000/generate-otp', {
+            method:'POST', 
+            headers:{'Content-Type':'application/json'}, 
+            body:JSON.stringify({email, password}) // Send password for OTP
+          })}>REQUEST_OTP</button>
+          <input placeholder="ENTER_OTP" onChange={e => setOtp(e.target.value)} />
+          <button className="login-btn" onClick={handleLogin}>AUTHORIZE_LOGIN</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="interface">
-      <div className="scanner-line"></div>
-      
-      <header className="top-bar">
-        <div className="glitch-header">NADS // FORENSIC_DPI_ENGINE</div>
-        <div className="sys-metrics">
-          <span>PACKETS_ANALYZED: {packetCount.toLocaleString()}</span>
-          <span className="uplink-status">● KERNEL_UPLINK: ACTIVE</span>
-        </div>
+    <div className="dashboard-container">
+      <header className="header">
+        <h1>NETWORK ANOMALY DETECTION SYSTEM</h1>
+        <div className="top-right"><span>{time}</span></div>
       </header>
-
-      <div className="forensic-grid">
-        {/* WAVEFORM PANEL */}
-        <div className="visual-panel">
-          <div className="panel-label">HEURISTIC_FLUX_DENSITY</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={graphData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#001a1d" vertical={false} />
-              <YAxis hide domain={[0, 'auto']} />
-              <Area 
-                type="stepAfter" 
-                dataKey="val" 
-                stroke="#00f3ff" 
-                fill="rgba(0, 243, 255, 0.1)" 
-                isAnimationActive={false} // CRITICAL: Set to false for high-speed feeds
-              />
-            </AreaChart>
+      <div className="main-layout">
+        <div className="risk-sidebar">
+          <div className="gauge-label">24/7_RISK_SCORE</div>
+          <div className={`gauge ${risk > 80 ? 'danger' : ''}`}>{risk}%</div>
+          <ResponsiveContainer width="100%" height={100}>
+            <LineChart data={graphData}><Line type="monotone" dataKey="v" stroke="#00f3ff" dot={false} isAnimationActive={false}/></LineChart>
           </ResponsiveContainer>
         </div>
-
-        {/* DATA FEED PANEL */}
-        <div className="intel-section">
-          <div className="panel-label">> RAW_PACKET_INTERCEPT_STREAM</div>
-          <table className="intel-table">
-            <thead>
-              <tr>
-                <th>TIME</th>
-                <th>SOURCE_NODE</th>
-                <th>VECTOR</th>
-                <th>ENTROPY</th>
-                <th>SIZE_HEX</th>
-                <th>THREAT</th>
-              </tr>
-            </thead>
+        <div className="flow-table">
+          <table>
+            <thead><tr><th>SOURCE</th><th>VECTOR</th><th>DESTINATION</th><th>RISK</th></tr></thead>
             <tbody>
-              {stream.map((log, i) => (
-                <tr key={i} className={log.threat > 85 ? 'alert-row' : ''}>
-                  <td className="dim-txt">{log.timestamp}</td>
-                  <td className="cyan-txt">{log.src_ip}</td>
-                  <td className="vector-tag">{log.vector}</td>
-                  <td>{log.entropy.toFixed(2)}</td>
-                  <td className="dim-txt">{log.hex_size}</td>
-                  <td className="threat-cell" style={{color: log.threat > 80 ? '#ff003c' : '#00ff9d'}}>
-                    {log.threat}%
-                  </td>
+              {stream.map((p, i) => (
+                <tr key={i}>
+                  <td>{p.src}</td><td>▶▶▶</td><td>{p.dest}</td>
+                  <td style={{color: p.threat > 80 ? 'red' : '#00ff9d'}}>{p.threat}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      <footer className="footer">
-        <div className="cmd-line">
-          <span className="prompt">ROOT@NADS_SERVER:~#</span> 
-          <span className="typing"> MONITORING_THREADS_ACTIVE... PACKET_BUFFER_OK...</span>
-        </div>
-      </footer>
     </div>
   );
 }
