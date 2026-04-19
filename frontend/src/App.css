@@ -1,38 +1,65 @@
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.app-container {
+  background-color: #020617;
+  color: #38bdf8;
+  font-family: 'Courier New', monospace;
   min-height: 100vh;
+  padding: 20px;
+}
+
+.tactical-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+
+/* Terminal Styling */
+.terminal-window {
+  background: #000;
+  border: 1px solid #1e293b;
+  height: 450px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
 }
 
-.App-link {
-  color: #61dafb;
+.terminal-header {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr 1fr;
+  padding: 10px;
+  background: #0f172a;
+  font-size: 0.7rem;
+  font-weight: bold;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.log-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr 1fr;
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  border-bottom: 1px solid #0f172a;
+}
+
+.row-alert {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-left: 3px solid #ef4444;
+}
+
+.ip-addr { color: #facc15; }
+.threat-val { font-weight: bold; }
+
+.alert-mode {
+  animation: bg-pulse 2s infinite;
+}
+
+@keyframes bg-pulse {
+  0% { box-shadow: inset 0 0 50px rgba(239, 68, 68, 0); }
+  50% { box-shadow: inset 0 0 50px rgba(239, 68, 68, 0.15); }
 }
