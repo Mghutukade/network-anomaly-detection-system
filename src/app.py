@@ -1,85 +1,112 @@
-import sys
-import os
-import time
-import threading
-import random
-import warnings
-from flask import Flask
+import sys, os, time, threading, random, secrets, warnings
+from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
+from flask_cors import CORS
+import psycopg2 
+from psycopg2.extras import RealDictCursor
 
-# 1. CLEAN TERMINAL: Suppress the Eventlet/Deprecation warnings for the Viva
+# --- DATABASE CONFIG ---
+DB_CONFIG = {
+    "dbname": "nads_db",
+    "user": "postgres",
+    "password": "maheshG39", # UPDATE THIS WITH YOUR PASSWORD
+    "host": "localhost",
+    "port": "5432"
+}
+
+# --- SENSITIVE ADMIN ACCESS (Hardcoded) ---
+ADMIN_DATABASE = {
+    "admin@nads.com": "root@2026",
+    "vaibhav@nads.com": "titan_secure"
+}
+
+def save_to_forensics(data):
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        query = """
+            INSERT INTO forensic_archive (source_node, vector_type, threat_score, entropy_level)
+            VALUES (%s, %s, %s, %s)
+        """
+        cur.execute(query, (data['src'], data['vector'], data['threat'], data['entropy']))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"💾 [DATABASE] Forensic log saved for threat: {data['threat']}%")
+    except Exception as e:
+        print(f"❌ [DB_ERROR]: {e}")
+
+# 1. CLEAN KERNEL
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-# 2. SYSTEM BRIDGE: Force Python to find the main.py in the root folder
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if BASE_DIR not in sys.path:
-    sys.path.append(BASE_DIR)
+if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
 
 app = Flask(__name__)
+CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# 2. SECURITY VAULT
+active_sessions = {}
 
 # 3. INTELLIGENCE LINKING
 try:
-    # Try importing your actual ML/Sniffer logic
     import main 
-    if hasattr(main, 'sniff_packet'):
-        sniff_packet = main.sniff_packet
-        print("✅ [SUCCESS] INTELLIGENCE LINK ESTABLISHED: main.py connected.")
-    else:
-        print("⚠️ [WARNING] main.py found, but 'sniff_packet' function is missing.")
-        raise AttributeError
-except (ImportError, AttributeError):
-    print("⚠️ [FALLBACK] LINKING FAILED. Enabling Forensic Simulation Mode.")
-    # This fallback ensures you have a working demo even if main.py has an error
-    def sniff_packet():
+    sniff_logic = main.sniff_packet
+    print("✅ [SUCCESS] INTELLIGENCE LINK ESTABLISHED.")
+except:
+    print("⚠️ [FALLBACK] SIMULATION MODE ACTIVE.")
+    def sniff_logic():
         return {
-            'ip': f"{random.randint(10,192)}.{random.randint(0,255)}.{random.randint(1,255)}",
+            'ip': f"103.21.{random.randint(1,255)}.{random.randint(1,255)}",
             'size': random.randint(64, 1500),
             'threat': random.randint(0, 100),
-            'entropy': round(random.uniform(2.5, 8.0), 2),
-            'flags': f"{random.choice(['SYN', 'ACK', 'FIN'])}|{random.choice(['PSH', 'URG'])}"
+            'entropy': round(random.uniform(2.5, 8.0), 2)
         }
 
-# 4. TACTICAL LOGIC
-def get_vector(threat_level):
-    if threat_level < 25: return "STABLE_ENCLAVE"
-    if threat_level < 55: return "HEURISTIC_FLAG"
-    if threat_level < 85: return "LATERAL_TRAVERSAL"
-    return "ACTIVE_EXPLOIT"
+@app.route('/generate-otp', methods=['POST'])
+def generate_otp():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password') # Sensitive check
+    
+    if email in ADMIN_DATABASE and ADMIN_DATABASE[email] == password:
+        otp = secrets.token_hex(3).upper()
+        active_sessions[email] = otp
+        print(f"\n🔑 [SECURITY] AUTHENTICATION OTP FOR {email}: {otp}")
+        return jsonify({"status": "sent"}), 200
+    return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    email = data.get('email')
+    otp = data.get('otp')
+    if active_sessions.get(email) == otp:
+        return jsonify({"status": "success"}), 200
+    return jsonify({"status": "unauthorized"}), 401
 
 def background_sniffer():
-    print("⚡ [CORE] FORENSIC KERNEL ONLINE. MONITORING DATA LINK LAYER...")
+    print("⚡ [CORE] 24/7 FORENSIC MONITORING ACTIVE...")
     while True:
         try:
-            # Get real data from your AI engine
-            raw_data = sniff_packet()
-            
-            threat = raw_data.get('threat', 0)
-            
-            # Construct high-density forensic payload
+            raw = sniff_logic()
+            threat = raw.get('threat', 0)
             intel_payload = {
                 'timestamp': time.strftime('%H:%M:%S'),
-                'src_ip': raw_data.get('ip', '0.0.0.0'),
-                'vector': get_vector(threat),
+                'src': raw.get('ip'),
+                'dest': "192.168.1.50 (GATEWAY_NODE)", 
+                'vector': "ACTIVE_EXPLOIT" if threat > 80 else "STABLE_TCP",
                 'threat': threat,
-                'hex_size': hex(raw_data.get('size', 0)).upper(),
-                'entropy': raw_data.get('entropy', 0),
-                'flags': raw_data.get('flags', 'NONE'),
-                'status': "CRITICAL" if threat > 85 else "ACTIVE"
+                'entropy': raw.get('entropy', 0),
+                'hex_size': hex(raw.get('size', 0)).upper()
             }
-            
-            # Broadcast to React Dashboard
             socketio.emit('intel_stream', intel_payload)
-            
+            if threat > 75:
+                save_to_forensics(intel_payload)
         except Exception as e:
-            print(f"❌ [KERNEL ERROR]: {e}")
-            
-        time.sleep(0.4) # Maintains a fast, aggressive scrolling feel
+            print(f"❌ [KERNEL_ERROR]: {e}")
+        time.sleep(0.5)
 
-# 5. EXECUTION
 if __name__ == '__main__':
-    # Run the sniffer in a separate thread so it doesn't block the web server
     threading.Thread(target=background_sniffer, daemon=True).start()
-    
-    print("📡 [SERVER] DASHBOARD UPLINK PORT: 5000")
     socketio.run(app, host='127.0.0.1', port=5000, debug=False)
