@@ -2,8 +2,10 @@ import numpy as np
 import joblib
 import os
 
-BASE_DIR = os.path.dirname(__file__)
+# This gets D:\Network_Anomaly_Detection\src
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Load the models WITHOUT adding an extra "src" to the path
 rf_model = joblib.load(os.path.join(BASE_DIR, "rf_model.pkl"))
 iso_model = joblib.load(os.path.join(BASE_DIR, "iso_model.pkl"))
 scaler = joblib.load(os.path.join(BASE_DIR, "scaler.pkl"))
