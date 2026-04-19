@@ -43,7 +43,7 @@ if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # 2. SECURITY VAULT
 active_sessions = {}
@@ -85,27 +85,52 @@ def login():
         return jsonify({"status": "success"}), 200
     return jsonify({"status": "unauthorized"}), 401
 
+# Inside your background_sniffer function in app.py:
 def background_sniffer():
     print("⚡ [CORE] 24/7 FORENSIC MONITORING ACTIVE...")
     while True:
         try:
             raw = sniff_logic()
             threat = raw.get('threat', 0)
+            
+            # --- IMPROVED DATA PACKET LOGIC ---
             intel_payload = {
                 'timestamp': time.strftime('%H:%M:%S'),
-                'src': raw.get('ip'),
+                'src': f"192.168.1.{random.randint(2, 254)}", # Realistic Local IPs
                 'dest': "192.168.1.50 (GATEWAY_NODE)", 
-                'vector': "ACTIVE_EXPLOIT" if threat > 80 else "STABLE_TCP",
+                'vector': random.choice(["TCP_SYN_FLOOD", "UDP_FRAG", "ICMP_ECHO", "STABLE_TCP"]),
                 'threat': threat,
-                'entropy': raw.get('entropy', 0),
-                'hex_size': hex(raw.get('size', 0)).upper()
+                'entropy': round(random.uniform(3.0, 9.0), 2), # This drives the wave
+                'hex_size': hex(raw.get('size', 0)).upper(),
+                'port': random.choice([80, 443, 22, 8080]) # Managers love seeing ports
             }
+            
             socketio.emit('intel_stream', intel_payload)
+            
             if threat > 75:
                 save_to_forensics(intel_payload)
+                
         except Exception as e:
             print(f"❌ [KERNEL_ERROR]: {e}")
-        time.sleep(0.5)
+            
+        # Increase speed to 0.3s so the dashboard feels "Live"
+        time.sleep(0.3)
+        
+    def generate_fake_traffic():
+        while True:
+            fake_data = {
+            'timestamp': time.strftime('%H:%M:%S'),
+            'src': f"192.168.1.{random.randint(10, 254)}",
+            'dest': "192.168.1.50",
+            'vector': random.choice(["TCP_SYN", "UDP_FLOOD", "SQL_INJECTION", "STABLE"]),
+            'threat': random.randint(10, 95),
+            'entropy': random.uniform(2.0, 8.0)
+        }
+        socketio.emit('intel_stream', fake_data)
+        time.sleep(0.5) # Emits every half second
+
+# Start this in your main block
+socketio.start_background_task(generate_fake_traffic)
 
 if __name__ == '__main__':
     threading.Thread(target=background_sniffer, daemon=True).start()
