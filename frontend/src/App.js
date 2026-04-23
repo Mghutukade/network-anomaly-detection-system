@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-import { LineChart, Line, ResponsiveContainer, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './App.css';
 
+// Ensure this matches your Flask server address
 const socket = io("http://127.0.0.1:5000");
 
 function App() {
@@ -21,11 +22,20 @@ function App() {
     
     socket.on("intel_stream", (data) => {
       if (isLoggedIn) {
+        // Update Live Table (keep last 15 packets)
         setStream(prev => [data, ...prev].slice(0, 15));
-        setRisk(data.threat);
-        // Use 'v' for threat and 'e' for entropy tracking
-        setGraphData(prev => [...prev.slice(-25), { t: data.timestamp, v: data.threat, e: data.entropy }]);
         
+        // Update Global Risk Gauge
+        setRisk(data.threat);
+        
+        // Update Entropy Graph Data
+        setGraphData(prev => [...prev.slice(-30), { 
+          t: data.timestamp, 
+          v: data.threat, 
+          e: data.entropy 
+        }]);
+        
+        // Update Executive Metrics
         setStats(prev => ({
           total: prev.total + 1,
           critical: data.threat > 80 ? prev.critical + 1 : prev.critical,
@@ -41,13 +51,18 @@ function App() {
   }, [isLoggedIn]);
 
   const handleLogin = async () => {
-    const res = await fetch('http://localhost:5000/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, otp })
-    });
-    const result = await res.json();
-    if (result.status === 'success') setIsLoggedIn(true);
-    else alert("ACCESS_DENIED: UNAUTHORIZED");
+    try {
+      const res = await fetch('http://localhost:5000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp })
+      });
+      const result = await res.json();
+      if (result.status === 'success') setIsLoggedIn(true);
+      else alert("ACCESS_DENIED: UNAUTHORIZED CREDENTIALS");
+    } catch (err) {
+      alert("SERVER_OFFLINE: CHECK FLASK TERMINAL");
+    }
   };
 
   if (!isLoggedIn) {
@@ -56,16 +71,16 @@ function App() {
         <div className="auth-box">
           <div className="auth-header">
             <h2>NADS_SECURE_KERNEL</h2>
-            <p>AUTHORIZED_ACCESS_ONLY</p>
+            <p>ADMIN_LEVEL_AUTHENTICATION_v2.5</p>
           </div>
-          <input placeholder="ADMIN_ID" onChange={e => setEmail(e.target.value)} />
-          <input type="password" placeholder="SECRET_KEY" onChange={e => setPassword(e.target.value)} />
+          <input placeholder="ADMIN_EMAIL" onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="ADMIN_PASSWORD" onChange={e => setPassword(e.target.value)} />
           <button className="otp-btn" onClick={() => fetch('http://localhost:5000/generate-otp', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
-          })}>GET_AUTH_TOKEN</button>
-          <input placeholder="UNIQUE_OTP" onChange={e => setOtp(e.target.value)} />
-          <button className="login-btn" onClick={handleLogin}>VERIFY_&_ENTER</button>
+          })}>REQUEST_SECURITY_TOKEN</button>
+          <input placeholder="ENTER_OTP" onChange={e => setOtp(e.target.value)} />
+          <button className="login-btn" onClick={handleLogin}>AUTHORIZE_SESSION</button>
         </div>
       </div>
     );
@@ -97,62 +112,73 @@ function App() {
 
       <div className="main-layout">
         <aside className="risk-sidebar">
+          {/* Risk Gauge Module */}
           <div className="module-card">
             <div className="module-label">LIVE_THREAT_INDEX</div>
             <div className={`big-gauge ${risk > 80 ? 'critical' : ''}`}>
               {risk}<span>%</span>
             </div>
-            <p className="risk-desc">{risk > 80 ? "!!! ALERT: ANOMALY !!!" : "SYSTEM: STABLE"}</p>
+            <p className="risk-desc">{risk > 80 ? "ALERT: ANOMALY DETECTED" : "STATUS: NORMAL_TRAFFIC"}</p>
           </div>
 
-          <div className="module-card tracker">
+          {/* Entropy Pattern Module (UPGRADED WITH AREA CHART) */}
+          <div className="module-card">
             <div className="module-label">ENTROPY_PATTERN_TRACKER</div>
             <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={graphData}>
+              <AreaChart data={graphData}>
+                <defs>
+                  <linearGradient id="colorThreat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={risk > 80 ? "#ff003c" : "#00f3ff"} stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#010103" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="1 4" stroke="#00414a" vertical={false}/>
                 <Tooltip 
-                  contentStyle={{backgroundColor: '#000', border: '1px solid #00f3ff', fontSize: '10px'}}
-                  itemStyle={{color: '#00f3ff'}}
+                  contentStyle={{backgroundColor: '#000', border: '1px solid #00f3ff', color: '#00f3ff', fontSize: '10px'}}
                 />
-                <Line 
+                <Area 
                   type="stepAfter" 
                   dataKey="v" 
                   stroke={risk > 80 ? "#ff003c" : "#00f3ff"} 
-                  strokeWidth={2} 
-                  dot={{ r: 2, fill: '#00f3ff' }} 
+                  fillOpacity={1} 
+                  fill="url(#colorThreat)" 
                   isAnimationActive={false} 
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </aside>
 
+        {/* Real-Time Table Section */}
         <section className="forensics-container">
           <div className="table-header">
-            <div className="module-label">REAL-TIME_ANOMALY_FORENSICS</div>
-            <div className="db-status">POSTGRES_SYNC: ACTIVE</div>
+            <div className="module-label">REAL-TIME_TRAFFIC_FORENSICS</div>
+            <div className="db-status">POSTGRESQL_SYNC: ACTIVE</div>
           </div>
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>ORIGIN</th>
-                  <th>VECTOR</th>
+                  <th>SOURCE_ORIGIN</th>
+                  <th>ATTACK_VECTOR</th>
                   <th>NODE_TARGET</th>
-                  <th>THREAT</th>
-                  <th>ACTION</th>
+                  <th>RISK</th>
+                  <th>ACTION_STATUS</th>
                 </tr>
               </thead>
               <tbody>
                 {stream.map((p, i) => (
                   <tr key={i} className={p.threat > 80 ? 'high-threat-row' : ''}>
-                    <td className="ip-cell mono">{p.src}</td>
+                    <td className="mono">
+                      <span className="ip-cell">{p.src}</span>
+                      <div className="sub-label">PORT: {p.port || 'DYNAMIC'}</div>
+                    </td>
                     <td><span className="vector-tag">{p.vector}</span></td>
-                    <td className="mono" style={{opacity: 0.6}}>{p.dest}</td>
+                    <td className="mono" style={{opacity: 0.7}}>{p.dest}</td>
                     <td className={p.threat > 80 ? 'risk-high' : 'risk-low'}>{p.threat}%</td>
                     <td>
                       <span className={`status-badge ${p.threat > 80 ? 'blocked' : 'monitored'}`}>
-                        {p.threat > 80 ? "ARCHIVED" : "MONITOR"}
+                        {p.threat > 80 ? "ARCHIVED" : "MONITORING"}
                       </span>
                     </td>
                   </tr>
