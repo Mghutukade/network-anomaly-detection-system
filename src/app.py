@@ -3,23 +3,23 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 from flask_cors import CORS
 import psycopg2 
-from psycopg2.extras import RealDictCursor
 
 # --- DATABASE CONFIG ---
 DB_CONFIG = {
     "dbname": "nads_db",
     "user": "postgres",
-    "password": "maheshG39", # UPDATE THIS WITH YOUR PASSWORD
+    "password": "maheshG39", 
     "host": "localhost",
     "port": "5432"
 }
 
-# --- SENSITIVE ADMIN ACCESS (Hardcoded) ---
+# --- SENSITIVE ADMIN ACCESS ---
 ADMIN_DATABASE = {
     "admin@nads.com": "root@2026",
     "vaibhav@nads.com": "titan_secure"
 }
 
+# --- DATABASE LOGIC ---
 def save_to_forensics(data):
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -32,23 +32,19 @@ def save_to_forensics(data):
         conn.commit()
         cur.close()
         conn.close()
-        print(f"💾 [DATABASE] Forensic log saved for threat: {data['threat']}%")
+        print(f"💾 [DATABASE] Forensic log saved: {data['threat']}%")
     except Exception as e:
         print(f"❌ [DB_ERROR]: {e}")
 
-# 1. CLEAN KERNEL
+# --- KERNEL SETUP ---
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
-
 app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# 2. SECURITY VAULT
 active_sessions = {}
 
-# 3. INTELLIGENCE LINKING
+# --- INTELLIGENCE LINKING (Sniffer vs Fallback) ---
 try:
     import main 
     sniff_logic = main.sniff_packet
@@ -63,75 +59,69 @@ except:
             'entropy': round(random.uniform(2.5, 8.0), 2)
         }
 
+# --- AUTH ROUTES ---
 @app.route('/generate-otp', methods=['POST'])
 def generate_otp():
     data = request.json
-    email = data.get('email')
-    password = data.get('password') # Sensitive check
-    
+    email, password = data.get('email'), data.get('password')
     if email in ADMIN_DATABASE and ADMIN_DATABASE[email] == password:
         otp = secrets.token_hex(3).upper()
         active_sessions[email] = otp
-        print(f"\n🔑 [SECURITY] AUTHENTICATION OTP FOR {email}: {otp}")
+        print(f"\n🔑 [SECURITY] OTP FOR {email}: {otp}")
         return jsonify({"status": "sent"}), 200
-    return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    return jsonify({"status": "error"}), 403
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    email = data.get('email')
-    otp = data.get('otp')
-    if active_sessions.get(email) == otp:
+    if active_sessions.get(data.get('email')) == data.get('otp'):
         return jsonify({"status": "success"}), 200
     return jsonify({"status": "unauthorized"}), 401
 
-# Inside your background_sniffer function in app.py:
+# --- BACKGROUND PROCESSORS ---
 def background_sniffer():
     print("⚡ [CORE] 24/7 FORENSIC MONITORING ACTIVE...")
     while True:
         try:
             raw = sniff_logic()
             threat = raw.get('threat', 0)
-            
-            # --- IMPROVED DATA PACKET LOGIC ---
             intel_payload = {
                 'timestamp': time.strftime('%H:%M:%S'),
-                'src': f"192.168.1.{random.randint(2, 254)}", # Realistic Local IPs
+                'src': f"192.168.1.{random.randint(2, 254)}",
                 'dest': "192.168.1.50 (GATEWAY_NODE)", 
                 'vector': random.choice(["TCP_SYN_FLOOD", "UDP_FRAG", "ICMP_ECHO", "STABLE_TCP"]),
                 'threat': threat,
-                'entropy': round(random.uniform(3.0, 9.0), 2), # This drives the wave
+                'entropy': round(random.uniform(3.0, 9.0), 2),
                 'hex_size': hex(raw.get('size', 0)).upper(),
-                'port': random.choice([80, 443, 22, 8080]) # Managers love seeing ports
+                'port': random.choice([80, 443, 22, 8080])
             }
-            
             socketio.emit('intel_stream', intel_payload)
-            
             if threat > 75:
                 save_to_forensics(intel_payload)
-                
         except Exception as e:
             print(f"❌ [KERNEL_ERROR]: {e}")
-            
-        # Increase speed to 0.3s so the dashboard feels "Live"
         time.sleep(0.3)
-        
-    def generate_fake_traffic():
-        while True:
-            fake_data = {
+
+def generate_fake_traffic():
+    print("🚀 [TRAFFIC] SYNTHETIC STREAM STARTING...")
+    while True:
+        fake_data = {
             'timestamp': time.strftime('%H:%M:%S'),
-            'src': f"192.168.1.{random.randint(10, 254)}",
-            'dest': "192.168.1.50",
+            'src': f"10.0.0.{random.randint(10, 254)}",
+            'dest': "INTERNAL_SERVER",
             'vector': random.choice(["TCP_SYN", "UDP_FLOOD", "SQL_INJECTION", "STABLE"]),
             'threat': random.randint(10, 95),
-            'entropy': random.uniform(2.0, 8.0)
+            'entropy': round(random.uniform(2.0, 8.0), 2),
+            'port': random.choice([80, 443, 21])
         }
         socketio.emit('intel_stream', fake_data)
-        time.sleep(0.5) # Emits every half second
+        time.sleep(0.5)
 
-# Start this in your main block
-socketio.start_background_task(generate_fake_traffic)
-
+# --- BOOTSTRAP ---
 if __name__ == '__main__':
+    # Using threading for sniffer and start_background_task for fake traffic
+    socketio.start_background_task(generate_fake_traffic)
     threading.Thread(target=background_sniffer, daemon=True).start()
+    
+    print("🌐 [SERVER] NADS KERNEL RUNNING ON http://127.0.0.1:5000")
     socketio.run(app, host='127.0.0.1', port=5000, debug=False)
